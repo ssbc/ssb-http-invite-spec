@@ -1,0 +1,253 @@
+<html>
+<head>
+<style>
+html {
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 80px 0;
+  line-height: 1.5em;
+}
+h2 {
+  margin-top: 70px;
+}
+h3 {
+  margin-top: 50px;
+}
+table {
+  border-collapse: collapse;
+}
+td, th {
+  padding: 0.5rem;
+  border: 1px #aaa solid;
+}
+a[href^="http"]::after {
+  content: "⧉";
+}
+a[href^="#"] {
+  text-decoration: none;
+  border-bottom: 1px blue dotted;
+}
+pre {
+  white-space: break-spaces;
+}
+pre, code {
+  background-color: #e8e8e8;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+</style>
+</head>
+<script crossorigin src="https://unpkg.com/mermaid@8.9.1/dist/mermaid.min.js"></script>
+<body>
+
+<h1 id="ssb-http-invites">SSB HTTP Invites</h1>
+<p><strong>Revision:</strong> <code>2021-04-26</code></p>
+<p><strong>Author:</strong> Andre Medeiros <a href="mailto:contact@staltz.com">contact@staltz.com</a></p>
+<p><strong>License:</strong> This work is licensed under a <a href="http://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License</a>.</p>
+<h2 id="abstract">Abstract</h2>
+<p>As part of the process of onboarding to SSB, new users often need to connect to a "pub server" or "room server" where content can be retrieved from. These servers
+often employ an access control system based on invite tokens, to prevent access to undesired actors from the public internet. The invite system deployed by these servers has been a convoluted algorithm repurposing secret-handshake to create an ephemeral muxrpc connection only for the initial remote procedure call to claim the invite token. In this document, we describe a simpler HTTP-based invite-token system for pubs and rooms that applies before any secret-handshake connection is built.</p>
+<h2 id="terminology">Terminology</h2>
+<p>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in <a href="https://tools.ietf.org/html/rfc2119">RFC 2119</a>.</p>
+<h2 id="table-of-contents">Table of contents</h2>
+<ul>
+<li><a href="#conditions">Conditions</a></li>
+<li><a href="#specification">Specification</a>
+<ul>
+<li><a href="#programmatic-invite-fa%C3%A7ade">Programmatic invite façade</a></li>
+</ul>
+</li>
+<li><a href="#example">Example</a></li>
+<li><a href="#implementation-notes">Implementation notes</a></li>
+<li><a href="#security-considerations">Security considerations</a>
+<ul>
+<li><a href="#malicious-web-visitor">Malicious web visitor</a></li>
+</ul>
+</li>
+<li><a href="#appendix">Appendix</a>
+<ul>
+<li><a href="#list-of-new-ssb-uris">List of new SSB URIs</a></li>
+</ul>
+</li>
+</ul>
+<h2 id="conditions">Conditions</h2>
+<p>This specification makes clear assumptions about the setup involved peers authenticating.</p>
+<p><strong>Server:</strong> an SSB peer, known as the "server", <strong>MUST</strong> have an internet-public host address, <strong>MUST</strong> be accessible for secret-handshake connections under a multiserver address, and <strong>MUST</strong> support HTTPS requests as well as it <strong>MUST NOT</strong> support plain HTTP.</p>
+<p><strong>Client:</strong> another SSB peer, known as the "client", <strong>SHOULD</strong> be able to open a secret-handshake and muxrpc connection with the server. The user controlling this SSB peer also <strong>MUST</strong> control a web browser used to make requests to the server. The client's browser and operating system <strong>SHOULD</strong> support hyperlinks to <a href="https://github.com/ssb-ngi-pointer/ssb-uri-spec">SSB URIs</a>, redirecting them to SSB applications that recognize and parse SSB URIs. The client's SSB application employed during SSB HTTP Authentication <strong>MUST</strong> be able to recognize and parse SSB URIs.</p>
+<h2 id="specification">Specification</h2>
+<ol>
+<li>Suppose an SSB user (known as "the client") has the SSB ID <code>userId</code> and has an SSB app supporting parsing SSB URIs</li>
+<li>Suppose the server is hosted at domain <code>serverHost</code> and has generated an invite <code>inviteCode</code></li>
+<li>The invite link corresponding to <code>inviteCode</code> <strong>SHOULD</strong> be a URL in the format <code>https://${serverHost}/join?invite=${inviteCode}</code></li>
+<li>When the client visits that URL in a browser, the server <strong>MUST</strong> respond with HTML such that:
+<ol>
+<li>If the <code>inviteCode</code> is already claimed or otherwise no longer valid, an error page <strong>SHOULD</strong> be rendered as response, and no further steps in this specification apply</li>
+<li>Otherwise, the <code>inviteCode</code> is <em>unclaimed</em>, and the following SSB URI <strong>MUST</strong> be rendered on the response page: <code>ssb:experimental?action=claim-http-invite&#x26;invite=${inviteCode}&#x26;postTo=${submissionUrl}</code> where <code>${submissionUrl}</code> is another URL on the server</li>
+</ol>
+</li>
+<li>The client's SSB app <strong>SHOULD</strong> parse the SSB URI and subsequently <strong>SHOULD</strong> send an HTTPS POST request to the endpoint <code>submissionUrl</code> with the header <code>Content-Type</code> equal <code>application/json</code> and the following body: <code>{"id":"${userId}","invite":"${inviteCode}"}</code></li>
+<li>The server receives the POST request and:
+<ol>
+<li>If the <code>inviteCode</code> is already claimed, the response <strong>SHOULD</strong> be an error, and no further steps in this specification apply</li>
+<li>Otherwise, the <code>inviteCode</code> is now considered <em>claimed</em> for <code>userId</code>, which means:
+<ol>
+<li>The server <strong>SHOULD</strong> store the client's <code>userId</code> and allow the client to access resources on the server, effectively making the client a recognized member</li>
+<li>The server <strong>MUST</strong> respond with header <code>Content-Type</code> equal <code>application/json</code> and body <code>{"multiserverAddress":"${serverMsAddr}"}</code> where <code>${serverMsAddr}</code> consititutes the server's multiserver address</li>
+</ol>
+</li>
+</ol>
+</li>
+<li>The client receives the <code>submissionUrl</code> response, parses <code>${serverMsAddr}</code> from the response body, and <strong>MAY</strong> use that multiserver address to create a muxrpc connection with the server</li>
+<li>If the server receives a muxrpc connection from the client, it <strong>MUST</strong> authorize it and grant them a <a href="#tunnel-addresses">tunnel address</a></li>
+<li>The client is now an Internal User</li>
+</ol>
+<p>The JSON schemas for which the response from the <code>submissionUrl</code> <strong>MUST</strong> conform to is shown below.</p>
+<p><strong>Successful responses</strong></p>
+<pre><code class="language-json">{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/ssb-ngi-pointer/ssb-http-invite#claimed-json-endpoint-success",
+  "type": "object",
+  "properties": {
+    "status": {
+      "title": "Response status tag",
+      "description": "Indicates the completion status of this response",
+      "type": "string",
+      "pattern": "^(successful)$"
+    },
+    "multiserverAddress": {
+      "title": "Multiserver address of the server",
+      "description": "Should conform to https://github.com/ssbc/multiserver-address",
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "multiserverAddress"
+  ]
+}
+</code></pre>
+<p><strong>Failed responses</strong></p>
+<pre><code class="language-json">{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/ssb-ngi-pointer/ssb-http-invite#claimed-json-endpoint-error",
+  "type": "object",
+  "properties": {
+    "status": {
+      "title": "Response status tag",
+      "description": "Indicates the completion status of this response",
+      "type": "string"
+    },
+    "error": {
+      "title": "Response error",
+      "description": "Describes the specific error that occurred",
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "error"
+  ]
+}
+</code></pre>
+<h3 id="programmatic-invite-façade">Programmatic invite façade</h3>
+<p>As an additional endpoint for programmatic purposes, if the query parameter <code>encoding=json</code> is added to the invite link (for illustration: <code>https://${serverHost}/join?invite=${inviteCode}&#x26;encoding=json</code>), then the server <strong>SHOULD</strong> return a JSON response. The JSON body <strong>MUST</strong> conform to the following schemas:</p>
+<p><strong>Successful responses</strong></p>
+<pre><code class="language-json">{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/ssb-ngi-pointer/ssb-http-invite#invite-json-endpoint-success",
+  "type": "object",
+  "properties": {
+    "status": {
+      "title": "Response status tag",
+      "description": "Indicates the completion status of this response",
+      "type": "string",
+      "pattern": "^(successful)$"
+    },
+    "invite": {
+      "title": "Invite code",
+      "description": "Sequence of bytes that acts as a token to accept the invite",
+      "type": "string"
+    },
+    "postTo": {
+      "title": "Submission URL",
+      "description": "URL where clients should submit POST requests with a JSON body",
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "invite",
+    "postTo"
+  ]
+}
+</code></pre>
+<p><strong>Failed responses</strong></p>
+<pre><code class="language-json">{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/ssb-ngi-pointer/ssb-http-invite#invite-json-endpoint-error",
+  "type": "object",
+  "properties": {
+    "status": {
+      "title": "Response status tag",
+      "description": "Indicates the completion status of this response",
+      "type": "string"
+    },
+    "error": {
+      "title": "Response error",
+      "description": "Describes the specific error that occurred",
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "error"
+  ]
+}
+</code></pre>
+<h2 id="example">Example</h2>
+<p>Suppose the client has the SSB ID <code>@FlieaFef19uJ6jhHwv2CSkFrDLYKJd/SuIS71A5Y2as=.ed25519</code> and the server is hosted at <code>scuttlebutt.eu</code>. Then the invite user journey is:</p>
+<ol>
+<li>Invite code <code>39c0ac1850ec9af14f1bb73</code> was generated by the server</li>
+<li>The corresponding invite link is <code>https://scuttlebutt.eu/join?invite=39c0ac1850ec9af14f1bb73</code></li>
+<li>When the client opens that link in a browser, it renders a link to the SSB URI <a href="ssb:experimental?action=claim-http-invite&#x26;invite=39c0ac1850ec9af14f1bb73&#x26;postTo=https%3A%2F%2Fscuttlebutt.eu%2Fclaiminvite">ssb:experimental?action=claim-http-invite&#x26;invite=39c0ac1850ec9af14f1bb73&#x26;postTo=https%3A%2F%2Fscuttlebutt.eu%2Fclaiminvite</a></li>
+<li>The client's SSB app processes the SSB URI and makes a POST request to <code>https://scuttlebutt.eu/claiminvite</code> with body
+<pre><code>{
+  "id": "@FlieaFef19uJ6jhHwv2CSkFrDLYKJd/SuIS71A5Y2as=.ed25519",
+  "invite": "39c0ac1850ec9af14f1bb73"
+}
+</code></pre>
+</li>
+<li>The server accepts the POST request, and responds with the JSON body
+<pre><code>{
+  "status": "successful",
+  "multiserverAddress": "net:scuttlebutt.eu:8008~shs:zz+n7zuFc4wofIgKeEpXgB+/XQZB43Xj2rrWyD0QM2M="
+}
+</code></pre>
+</li>
+<li>The server now recognizes the client as an authorized member for any subsequent secret-handshake and muxrpc connections at the multiserver address <code>net:scuttlebutt.eu:8008~shs:zz+n7zuFc4wofIgKeEpXgB+/XQZB43Xj2rrWyD0QM2M=</code></li>
+</ol>
+<p>The JSON endpoint <code>https://scuttlebutt.eu/join?invite=39c0ac1850ec9af14f1bb73&#x26;encoding=json</code> is an alternative to the SSB URI, and would respond with the following JSON:</p>
+<pre><code class="language-json">{
+  "status": "successful",
+  "invite": "39c0ac1850ec9af14f1bb73",
+  "postTo": "https://scuttlebutt.eu/claiminvite"
+}
+</code></pre>
+<p>After that, the same steps 4, 5, and 6 apply.</p>
+<h2 id="implementation-notes">Implementation notes</h2>
+<p>The rendering of the invite façade HTML is unspecified on purpose. Implementors can choose to present the SSB URI either as a link, or as a code to be copied and pasted, or as an automatic redirect.</p>
+<p>Furthermore, the invite page is a good place to render instructions on how to install an SSB app, in case the invitee is uninitiated in SSB and this is their entry point.</p>
+<p>Specifically, these instructions can also use mobile operating systems deep linking capabilities. For instance, suppose the page recommends installing Manyverse: the page could link to <code>join.manyver.se</code> (with additional query parameters to pass on the invite code), which in turn uses Android Deep Linking redirect (see <a href="https://stackoverflow.com/questions/28744167/android-deep-linking-use-the-same-link-for-the-app-and-the-play-store">this technical possibility</a>) to open Manyverse (if it's installed) or open Google Play Store (to install the app). Same idea should apply for mobile apps, say "Imaginary App" using the fixed URL "join.imaginary.app". Desktop apps are different as they can be installed without an app store. This paragraph was informed by Wouter Moraal's <a href="https://www.manyver.se/ux-research/">UX Research for Manyverse</a>.</p>
+<h2 id="security-considerations">Security considerations</h2>
+<h3 id="malicious-web-visitor">Malicious web visitor</h3>
+<p>A web visitor, either human or bot, could attempt brute force visiting all possible invite URLs, in order to force themselves to become an <a href="#internal-user">internal user</a>. However, this could easily be mitigated by rate limiting requests by the same IP address.</p>
+<h2 id="appendix">Appendix</h2>
+<h3 id="list-of-new-ssb-uris">List of new SSB URIs</h3>
+<ul>
+<li><code>ssb:experimental?action=claim-http-invite&#x26;invite=${inviteCode}&#x26;postTo=${submissionUrl}</code></li>
+</ul>
+
+
+</body>
+</html>
