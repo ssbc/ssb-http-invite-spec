@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2021 Andre 'Staltz' Medeiros
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # Specification
 
 1. Suppose an SSB user (known as "the client") has the SSB ID `userId` and has an SSB app supporting parsing SSB URIs
